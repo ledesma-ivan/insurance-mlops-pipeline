@@ -1,0 +1,8 @@
+pandas
+numpy
+pyarrow
+scikit-learn
+xgboost
+mlflow
+fastapi
+uvicorn
