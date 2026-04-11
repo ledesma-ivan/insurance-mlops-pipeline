@@ -1,15 +1,16 @@
+import os
+
 import mlflow
 import mlflow.xgboost
 import xgboost as xgb
-import os
-
 from sklearn.metrics import (
+    classification_report,
+    f1_score,
     precision_score,
     recall_score,
-    f1_score,
     roc_auc_score,
-    classification_report,
 )
+
 from feature_store.feature_engineering import prepare_dataset
 
 
@@ -66,17 +67,18 @@ def train():
         run_id = mlflow.active_run().info.run_id
         model_uri = f"runs:/{run_id}/model"
         mlflow.register_model(model_uri, "insurance-fraud-model")
-        print(f"📦 Model registered as 'insurance-fraud-model'")
+        print("📦 Model registered as 'insurance-fraud-model'")
 
         # Print results
         print("\n📊 Metrics:")
         for name, value in metrics.items():
             print(f"   {name}: {value:.4f}")
 
-        print(f"\n📝 Classification Report:\n")
+        print("\n📝 Classification Report:\n")
         print(classification_report(y_test, y_pred, target_names=["Legit", "Fraud"]))
 
         print(f"✅ Run logged to MLflow: {mlflow.active_run().info.run_id}")
+
 
 if __name__ == "__main__":
     train()

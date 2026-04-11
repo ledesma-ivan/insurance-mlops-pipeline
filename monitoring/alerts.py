@@ -1,6 +1,6 @@
-
 import json
 from datetime import datetime
+
 from monitoring.drift import detect_drift
 
 
@@ -55,7 +55,7 @@ def log_alert(alert: dict):
     # Guardar a archivo
     with open("monitoring/alerts_log.json", "a") as f:
         f.write(json.dumps(alert, default=str) + "\n")
-    print(f"\n   📁 Alert saved to monitoring/alerts_log.json")
+    print("\n   📁 Alert saved to monitoring/alerts_log.json")
 
 
 def trigger_retraining(alert: dict):
@@ -64,13 +64,13 @@ def trigger_retraining(alert: dict):
     print(f"   Reason: drift detected in {alert['drifted_names']}")
 
     from training.train import train
+
     train()
 
     print("✅ Retraining complete!")
 
 
 if __name__ == "__main__":
-    import pandas as pd
     from feature_store.feature_engineering import prepare_dataset
 
     X_train, X_test, y_train, y_test = prepare_dataset()

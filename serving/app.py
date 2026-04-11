@@ -1,8 +1,9 @@
+import os
+
+import pandas as pd
+import xgboost as xgb
 from fastapi import FastAPI
 from pydantic import BaseModel
-import xgboost as xgb
-import pandas as pd
-import os
 
 app = FastAPI(title="Insurance Fraud Detection API")
 
@@ -95,4 +96,5 @@ def predict(claim: ClaimInput):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

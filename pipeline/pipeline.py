@@ -1,4 +1,5 @@
 import os
+
 os.environ["PYTHONIOENCODING"] = "utf-8"
 
 """
@@ -7,7 +8,7 @@ MLOps pipeline: features, training, evaluation, deploy
 """
 
 from kfp import dsl
-from kfp.dsl import Input, Output, Dataset, Model, Metrics
+from kfp.dsl import Dataset, Input, Metrics, Model, Output
 
 
 # === STEP 1: Feature Engineering ===
@@ -21,7 +22,6 @@ def feature_engineering_step(
 ):
     """Carga datos crudos, crea features y guarda en Feature Store"""
     import pandas as pd
-    import numpy as np
 
     # Cargar datos
     insurance = pd.read_csv(f"{raw_data_path}/insurance_data.csv")
@@ -67,27 +67,35 @@ def training_step(
     """Entrena XGBoost y loguea en MLflow"""
     import pandas as pd
     import xgboost as xgb
+    from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
     from sklearn.model_selection import train_test_split
-    from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
 
     # Cargar features
     df = pd.read_parquet(features_input.path)
 
     feature_cols = [
-        "PREMIUM_AMOUNT", "CLAIM_AMOUNT", "AGE", "TENURE",
-        "NO_OF_FAMILY_MEMBERS", "INCIDENT_HOUR_OF_THE_DAY",
-        "claim_to_premium_ratio", "is_high_claim",
-        "days_loss_to_report", "days_report_to_txn", "policy_age_days",
-        "is_night_incident", "is_major_loss", "no_police_report",
-        "no_injury_high_claim", "risk_encoded",
+        "PREMIUM_AMOUNT",
+        "CLAIM_AMOUNT",
+        "AGE",
+        "TENURE",
+        "NO_OF_FAMILY_MEMBERS",
+        "INCIDENT_HOUR_OF_THE_DAY",
+        "claim_to_premium_ratio",
+        "is_high_claim",
+        "days_loss_to_report",
+        "days_report_to_txn",
+        "policy_age_days",
+        "is_night_incident",
+        "is_major_loss",
+        "no_police_report",
+        "no_injury_high_claim",
+        "risk_encoded",
     ]
 
     X = df[feature_cols].fillna(0)
     y = df["target"]
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
     # Entrenar
     scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()

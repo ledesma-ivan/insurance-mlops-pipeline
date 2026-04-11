@@ -1,5 +1,6 @@
-import pandas as pd
 import os
+
+import pandas as pd
 
 FEATURE_STORE_PATH = "data/processed/feature_store.parquet"
 
@@ -33,7 +34,7 @@ def get_feature_metadata(path: str = FEATURE_STORE_PATH) -> dict:
 
 
 if __name__ == "__main__":
-    from feature_store.feature_engineering import load_raw_data, create_features
+    from feature_store.feature_engineering import create_features, load_raw_data
 
     # 1. Crear features
     df = load_raw_data()
@@ -47,7 +48,7 @@ if __name__ == "__main__":
 
     # 4. Mostrar metadata
     metadata = get_feature_metadata()
-    print(f"\n📋 Feature Store Metadata:")
+    print("\n📋 Feature Store Metadata:")
     for key, value in metadata.items():
         if key != "dtypes":
             print(f"   {key}: {value}")

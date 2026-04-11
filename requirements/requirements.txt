@@ -7,6 +7,5 @@ mlflow
 fastapi
 uvicorn
 pytest
-httpx
 kfp
 google-cloud-aiplatform

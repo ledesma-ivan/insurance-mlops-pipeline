@@ -1,9 +1,6 @@
-import pytest
-import pandas as pd
 from feature_store.feature_engineering import (
-    load_raw_data,
     create_features,
-    select_model_features,
+    load_raw_data,
     prepare_dataset,
 )
 

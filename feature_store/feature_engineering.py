@@ -1,9 +1,8 @@
 import pandas as pd
-import numpy as np
 
 
 def load_raw_data(
-        # Cargamos los datos desde los CSVs (en un proyecto real, podrían venir de una base de datos o data lake)
+    # Cargamos los datos desde los CSVs (en un proyecto real, podrían venir de una base de datos o data lake)
     insurance_path: str = "data/raw/insurance_data.csv",
     employee_path: str = "data/raw/employee_data.csv",
     vendor_path: str = "data/raw/vendor_data.csv",
@@ -33,53 +32,33 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # === Features de montos ===
     # Ratio claim vs premium (indicador clásico de fraude)
-    features["claim_to_premium_ratio"] = (
-        features["CLAIM_AMOUNT"] /
-        features["PREMIUM_AMOUNT"].replace(0, 1)
-    )
+    features["claim_to_premium_ratio"] = features["CLAIM_AMOUNT"] / features["PREMIUM_AMOUNT"].replace(0, 1)
 
     # Claim amount alto (flag)
-    features["is_high_claim"] = (
-        features["CLAIM_AMOUNT"] > features["CLAIM_AMOUNT"].quantile(0.75)
-    ).astype(int)
+    features["is_high_claim"] = (features["CLAIM_AMOUNT"] > features["CLAIM_AMOUNT"].quantile(0.75)).astype(int)
 
     # === Features temporales ===
     # Días entre pérdida y reporte (fraude suele reportar tarde)
-    features["days_loss_to_report"] = (
-        features["REPORT_DT"] - features["LOSS_DT"]
-    ).dt.days
+    features["days_loss_to_report"] = (features["REPORT_DT"] - features["LOSS_DT"]).dt.days
 
     # Días entre reporte y transacción
-    features["days_report_to_txn"] = (
-        features["TXN_DATE_TIME"] - features["REPORT_DT"]
-    ).dt.days
+    features["days_report_to_txn"] = (features["TXN_DATE_TIME"] - features["REPORT_DT"]).dt.days
 
     # Antigüedad de la póliza al momento del claim
-    features["policy_age_days"] = (
-        features["LOSS_DT"] - features["POLICY_EFF_DT"]
-    ).dt.days
+    features["policy_age_days"] = (features["LOSS_DT"] - features["POLICY_EFF_DT"]).dt.days
 
     # Hora del incidente (madrugada = sospechoso)
-    features["is_night_incident"] = (
-        features["INCIDENT_HOUR_OF_THE_DAY"].isin([0, 1, 2, 3, 4, 5])
-    ).astype(int)
+    features["is_night_incident"] = (features["INCIDENT_HOUR_OF_THE_DAY"].isin([0, 1, 2, 3, 4, 5])).astype(int)
 
     # === Features de riesgo ===
     # Severidad alta
-    features["is_major_loss"] = (
-        features["INCIDENT_SEVERITY"] == "Major Loss"
-    ).astype(int)
+    features["is_major_loss"] = (features["INCIDENT_SEVERITY"] == "Major Loss").astype(int)
 
     # Sin reporte policial (sospechoso)
-    features["no_police_report"] = (
-        features["POLICE_REPORT_AVAILABLE"] == 0
-    ).astype(int)
+    features["no_police_report"] = (features["POLICE_REPORT_AVAILABLE"] == 0).astype(int)
 
     # Sin lesiones pero claim alto
-    features["no_injury_high_claim"] = (
-        (features["ANY_INJURY"] == 0) &
-        (features["is_high_claim"] == 1)
-    ).astype(int)
+    features["no_injury_high_claim"] = ((features["ANY_INJURY"] == 0) & (features["is_high_claim"] == 1)).astype(int)
 
     # === Features socioeconómicas ===
     # Encoding de risk segmentation
@@ -134,9 +113,7 @@ def prepare_dataset(
     X = df[feature_cols].fillna(0)
     y = df["target"]
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
     print(f"✅ Dataset split: train={len(X_train)}, test={len(X_test)}")
     print(f"   Target distribution: {y.value_counts().to_dict()}")
