@@ -26,5 +26,8 @@ jobs:
           pip install httpx
           pip install -e .
 
+      - name: Train model
+        run: python -m training.train
+
       - name: Run tests
         run: python -m pytest tests/ -v
