@@ -253,6 +253,23 @@ The API exposes the model as a REST endpoint consumable by **Palantir Foundry**:
 - **Challenge:** Highly imbalanced dataset
 
 ---
+## Model Performance Note
+
+The model shows low metrics (F1=0.02, ROC-AUC=0.49) due to the nature of the dataset: 
+no feature has correlation above 0.03 with the target variable. The CLAIM_STATUS 
+appears to be near-randomly assigned in this public dataset.
+
+In a production scenario, this would be addressed by:
+- Working with domain experts to engineer better features
+- Incorporating additional data sources (historical fraud patterns, external databases)
+- Using more advanced techniques (anomaly detection, graph-based fraud detection)
+
+**The focus of this project is the MLOps infrastructure**, not model optimization. 
+The complete pipeline (training, monitoring, serving, CI/CD) works regardless of 
+model performance.
+
+
+---
 
 ## Key Design Decisions
 
