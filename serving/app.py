@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from datetime import datetime
-import mlflow
+import xgboost as xgb
 import pandas as pd
+import os
 
 app = FastAPI(title="Insurance Fraud Detection API")
 
@@ -19,10 +19,10 @@ class ClaimInput(BaseModel):
     any_injury: int
     police_report_available: int
     risk_segmentation: str
-    loss_dt: str          # "2024-01-15"
-    report_dt: str        # "2024-01-18"
-    txn_date_time: str    # "2024-01-20"
-    policy_eff_dt: str    # "2020-06-01"
+    loss_dt: str
+    report_dt: str
+    txn_date_time: str
+    policy_eff_dt: str
 
 
 # --- Output schema ---
@@ -34,7 +34,6 @@ class PredictionOutput(BaseModel):
 
 def create_features_from_input(data: ClaimInput) -> pd.DataFrame:
     """Transforma datos crudos en features para el modelo"""
-    # Parsear fechas
     loss_dt = pd.to_datetime(data.loss_dt)
     report_dt = pd.to_datetime(data.report_dt)
     txn_date_time = pd.to_datetime(data.txn_date_time)
@@ -61,26 +60,25 @@ def create_features_from_input(data: ClaimInput) -> pd.DataFrame:
     return pd.DataFrame([features])
 
 
+# --- Cargar modelo al iniciar ---
+MODEL_PATH = os.getenv("MODEL_PATH", "models/latest/model.json")
+model = xgb.XGBClassifier()
+model.load_model(MODEL_PATH)
+print(f"✅ Model loaded from {MODEL_PATH}")
+
+
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
-
-# --- Cargar modelo al iniciar la API ---
-MODEL_NAME = "insurance-fraud-model"
-model = mlflow.xgboost.load_model(f"models:/{MODEL_NAME}/latest")
-print(f"✅ Model loaded: {MODEL_NAME}")
+    return {"status": "healthy", "model_path": MODEL_PATH}
 
 
 @app.post("/predict", response_model=PredictionOutput)
 def predict(claim: ClaimInput):
-    # 1. Crear features desde datos crudos
     features_df = create_features_from_input(claim)
 
-    # 2. Predecir
     prediction = int(model.predict(features_df)[0])
     probability = float(model.predict_proba(features_df)[0][1])
 
-    # 3. Asignar nivel de riesgo
     if probability >= 0.75:
         risk_level = "HIGH"
     elif probability >= 0.5:
@@ -93,6 +91,7 @@ def predict(claim: ClaimInput):
         probability=round(probability, 4),
         risk_level=risk_level,
     )
+
 
 if __name__ == "__main__":
     import uvicorn

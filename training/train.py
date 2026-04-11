@@ -1,6 +1,8 @@
 import mlflow
 import mlflow.xgboost
 import xgboost as xgb
+import os
+
 from sklearn.metrics import (
     precision_score,
     recall_score,
@@ -35,11 +37,14 @@ def train():
     with mlflow.start_run(run_name="xgboost-baseline"):
         # Log parameters
         mlflow.log_params(params)
+        # Guardar modelo localmente para serving
 
         # Train
         model = xgb.XGBClassifier(**params)
         model.fit(X_train, y_train)
-
+        os.makedirs("models/latest", exist_ok=True)
+        model.save_model("models/latest/model.json")
+        print("💾 Model saved to models/latest/model.json")
         # Predict
         y_pred = model.predict(X_test)
 
