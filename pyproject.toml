@@ -12,6 +12,7 @@ include = ["feature_store*", "training*", "monitoring*", "serving*", "pipeline*"
 [tool.ruff]
 line-length = 120
 target-version = "py311"
+exclude = ["notebooks/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]

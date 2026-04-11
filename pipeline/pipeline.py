@@ -1,14 +1,14 @@
-import os
-
-os.environ["PYTHONIOENCODING"] = "utf-8"
-
 """
 Vertex AI Pipeline usando Kubeflow SDK.
 MLOps pipeline: features, training, evaluation, deploy
 """
 
-from kfp import dsl
-from kfp.dsl import Dataset, Input, Metrics, Model, Output
+import os
+
+os.environ["PYTHONIOENCODING"] = "utf-8"
+
+from kfp import dsl  # noqa: E402
+from kfp.dsl import Dataset, Input, Metrics, Model, Output  # noqa: E402
 
 
 # === STEP 1: Feature Engineering ===
@@ -177,7 +177,7 @@ def insurance_fraud_pipeline(
     )
 
     # Step 3: Evaluation (depende de Step 2)
-    evaluation_task = evaluation_step(
+    evaluation_step(
         metrics_input=training_task.outputs["metrics_output"],
         model_input=training_task.outputs["model_output"],
     )
