@@ -6,3 +6,5 @@ xgboost
 mlflow
 fastapi
 uvicorn
+pytest
+httpx
