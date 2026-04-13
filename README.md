@@ -37,10 +37,9 @@ Monitoring (PSI Drift Detection) --> Automatic Retraining
 | API | FastAPI |
 | Pipeline Orchestration | Kubeflow SDK + Vertex AI |
 | Containerization | Docker + Docker Compose |
-| Orchestration (Prod) | Kubernetes (GKE via Vertex AI) |
+| Local Orchestration | Docker Compose |
 | CI/CD | GitHub Actions |
-| Cloud | Google Cloud Platform (Vertex AI) |
-| Monitoring | PSI (Population Stability Index) |
+| Model Monitoring | PSI (Population Stability Index) Custom Scripts |
 | Language | Python 3.11 |
 
 ---
