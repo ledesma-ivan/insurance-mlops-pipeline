@@ -30,17 +30,17 @@ Monitoring (PSI Drift Detection) --> Automatic Retraining
 ## Tech Stack
 
 | Component | Technology |
-|---|---|
-| Model | XGBoost |
-| Experiment Tracking | MLflow |
-| Feature Store | Parquet / PyArrow |
-| API | FastAPI |
-| Pipeline Orchestration | Kubeflow SDK + Vertex AI |
-| Containerization | Docker + Docker Compose |
-| Local Orchestration | Docker Compose |
-| CI/CD | GitHub Actions |
-| Model Monitoring | PSI (Population Stability Index) Custom Scripts |
-| Language | Python 3.11 |
+| :--- | :--- |
+| **Model** | XGBoost |
+| **Experiment Tracking** | MLflow |
+| **Data & Feature Storage** | Parquet / PyArrow |
+| **Model Serving (API)** | FastAPI + Uvicorn + Pydantic |
+| **Containerization** | Docker |
+| **Local Orchestration** | Docker Compose |
+| **CI (Continuous Integration)** | GitHub Actions |
+| **Code Quality & Testing** | Pre-commit, Ruff / Black, Pytest |
+| **Model Monitoring** | PSI (Population Stability Index) Custom Scripts |
+| **Language** | Python 3.11 |
 
 ---
 
