@@ -1,6 +1,6 @@
 # Insurance Fraud Detection - MLOps Pipeline
 
-End-to-end MLOps pipeline for insurance claim fraud detection. Built with **XGBoost**, **MLflow**, **FastAPI**, **Docker**, **Kubeflow**, and **Vertex AI**.
+End-to-end MLOps pipeline for insurance claim fraud detection. Built with **XGBoost**, **MLflow**, **FastAPI**, **Docker**.
 
 ---
 
