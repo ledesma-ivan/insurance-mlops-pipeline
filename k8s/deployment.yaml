@@ -5,7 +5,7 @@ metadata:
   labels:
     app: fraud-detection-api
 spec:
-  replicas: 3
+  replicas: 1  # HPA manages scaling from here
   selector:
     matchLabels:
       app: fraud-detection-api
@@ -16,12 +16,20 @@ spec:
     spec:
       containers:
         - name: api
-          image: insurance-mlops-pipeline-api:latest
+          image: fraud-detection-api:latest
+          imagePullPolicy: Never  # use image built inside Minikube daemon
           ports:
             - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: fraud-detection-config
           env:
-            - name: MODEL_PATH
-              value: /app/models/latest/model.json
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: fraud-detection-secrets
+                  key: anthropic-api-key
+                  optional: true
           resources:
             requests:
               memory: "256Mi"
@@ -35,12 +43,14 @@ spec:
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 5
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
             initialDelaySeconds: 15
             periodSeconds: 10
+            failureThreshold: 3
           volumeMounts:
             - name: model-volume
               mountPath: /app/models
@@ -60,7 +70,21 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8000
-  type: LoadBalancer
+      nodePort: 30080
+  type: NodePort  # LoadBalancer requires cloud provider; NodePort works on Minikube
+---
+# hostPath PV — Minikube mounts the local ./models directory at /mnt/models
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /mnt/models
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -68,7 +92,7 @@ metadata:
   name: model-pvc
 spec:
   accessModes:
-    - ReadOnlyMany
+    - ReadWriteOnce
   resources:
     requests:
       storage: 1Gi

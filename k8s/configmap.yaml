@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fraud-detection-config
+data:
+  MODEL_PATH: "/app/models/latest/model.json"
+  PROJECT_ROOT: "/app"
+  FAISS_INDEX_PATH: "/app/explainability/faiss_index"
+  # Override in production with the real MLflow service URL
+  MLFLOW_TRACKING_URI: "http://mlflow-service:5000"

@@ -1,6 +1,6 @@
 # Insurance Fraud Detection - MLOps Pipeline
 
-End-to-end MLOps pipeline for insurance claim fraud detection. Built with **XGBoost**, **MLflow**, **FastAPI**, **Airflow**, **LangChain + FAISS**, **Docker**, **Kubeflow**, and **Vertex AI**.
+End-to-end MLOps pipeline for insurance claim fraud detection. Built with **XGBoost**, **MLflow**, **FastAPI**, **Airflow**, **LangChain + FAISS**, **Kubernetes (Minikube)**, **Docker**, **Kubeflow**, and **Vertex AI**.
 
 ---
 
@@ -42,6 +42,8 @@ Monitoring (PSI Drift Detection) --> triggers DAG
 | API | FastAPI |
 | Retraining Orchestration | Apache Airflow 2.10 |
 | Explainability (GenAI) | LangChain + FAISS + Claude Haiku |
+| Container Orchestration | Kubernetes (Minikube) + HPA |
+| Load Testing | Locust |
 | Pipeline Orchestration | Kubeflow SDK + Vertex AI |
 | Containerization | Docker + Docker Compose |
 | Orchestration (Prod) | Kubernetes (GKE via Vertex AI) |
@@ -229,12 +231,19 @@ insurance-mlops-pipeline/
 ├── tests/
 │   ├── test_features.py             # Feature engineering tests
 │   └── test_api.py                  # API endpoint tests
+├── load_testing/
+│   └── locustfile.py                # Locust load test (validates HPA)
+├── scripts/
+│   └── minikube_deploy.sh           # One-command Minikube setup
 ├── docker/
 │   ├── Dockerfile.airflow           # Airflow image + ML deps
 │   ├── Dockerfile.api
 │   └── Dockerfile.mlflow
 ├── k8s/
-│   └── deployment.yaml              # Kubernetes manifests
+│   ├── deployment.yaml              # Deployment + Service + PV/PVC
+│   ├── configmap.yaml               # Env vars
+│   ├── secret.yaml                  # Secret template (no real values)
+│   └── hpa.yaml                     # HorizontalPodAutoscaler (1→5 pods)
 ├── .github/workflows/
 │   └── ci.yml                       # CI/CD pipeline
 ├── docker-compose.yml               # MLflow + API + Airflow + Postgres
@@ -275,7 +284,51 @@ Model Decay: automatic retraining triggered on drift.
 - Returns prediction + probability + risk level
 - Containerized with Docker
 
-### 5. RAG Explainability Layer (GenAI)
+### 5. Kubernetes — Autoscaling with HPA
+
+Deploy the FastAPI to Minikube and validate autoscaling with Locust load tests.
+
+**Manifests (`k8s/`):**
+
+| File | Resource | Purpose |
+|---|---|---|
+| `deployment.yaml` | Deployment + Service + PV/PVC | API pods, NodePort 30080, hostPath model volume |
+| `configmap.yaml` | ConfigMap | Env vars (MODEL_PATH, MLFLOW_TRACKING_URI) |
+| `secret.yaml` | Secret template | ANTHROPIC_API_KEY (never commit real values) |
+| `hpa.yaml` | HorizontalPodAutoscaler | Scale 1→5 pods at 70% CPU / 80% memory |
+
+**HPA behaviour:**
+- Scale-up: +2 pods per 60s, stabilisation window 30s (reacts fast to spikes)
+- Scale-down: -1 pod per 120s, stabilisation window 120s (avoids flapping)
+
+**One-command deploy:**
+```bash
+bash scripts/minikube_deploy.sh
+# Starts Minikube, enables metrics-server, builds image, applies all manifests
+# API: http://$(minikube ip):30080/docs
+```
+
+**Watch autoscaling in action:**
+```bash
+# Terminal 1 — watch HPA
+kubectl get hpa fraud-detection-hpa --watch
+
+# Terminal 2 — watch pods
+kubectl get pods -l app=fraud-detection-api --watch
+
+# Terminal 3 — load test (50 users, 3 min)
+locust -f load_testing/locustfile.py \
+  --headless -u 50 -r 30 --run-time 3m \
+  --host http://$(minikube ip):30080
+
+# Spike test — drives scale-up fast
+locust -f load_testing/locustfile.py \
+  --headless -u 100 -r 100 --run-time 2m \
+  --host http://$(minikube ip):30080 \
+  --tags spike
+```
+
+### 6. RAG Explainability Layer (GenAI)
 
 `POST /explain` answers **"¿por qué se marcó esta claim?"** using a RAG pipeline:
 
@@ -321,11 +374,11 @@ Weekly automated retraining with promotion gate:
 
 **Default F1 threshold: `0.60`** — configurable at runtime via Airflow Variables (no redeploy needed).
 
-### 6. CI/CD
+### 7. CI/CD
 - GitHub Actions runs on every push to `main`
 - Trains model + runs all tests automatically
 
-### 7. Vertex AI (Production)
+### 8. Vertex AI (Production)
 - Pipeline compiled with Kubeflow SDK
 - Deployable to Vertex AI Endpoints
 - Feature Store integration ready
@@ -394,3 +447,7 @@ model performance.
 | Airflow LocalExecutor over Celery | Single-node dev setup, no Redis overhead |
 | F1 threshold via Airflow Variable | Configurable at runtime without redeploy |
 | BranchPythonOperator for promote/reject | Native Airflow pattern, visible in DAG graph |
+| NodePort over LoadBalancer in Minikube | LoadBalancer requires cloud provider; NodePort works locally |
+| hostPath PV over cloud PVC | Zero cloud deps for local Minikube demo |
+| HPA on CPU 70% threshold | Industry default; memory added as secondary guard |
+| Locust over k6/JMeter | Pure Python, easy to extend with custom fraud payloads |
