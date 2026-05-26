@@ -7,3 +7,11 @@ models/
 monitoring/alerts_log.json
 .pytest_cache/
 *.egg-info/
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfstate.lock.info
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars

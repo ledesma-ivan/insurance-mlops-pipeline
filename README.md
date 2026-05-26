@@ -44,9 +44,9 @@ Monitoring (PSI Drift Detection) --> triggers DAG
 | Explainability (GenAI) | LangChain + FAISS + Claude Haiku |
 | Container Orchestration | Kubernetes (Minikube) + HPA |
 | Load Testing | Locust |
+| Infrastructure as Code | Terraform (Google provider) |
 | Pipeline Orchestration | Kubeflow SDK + Vertex AI |
 | Containerization | Docker + Docker Compose |
-| Orchestration (Prod) | Kubernetes (GKE via Vertex AI) |
 | CI/CD | GitHub Actions |
 | Cloud | Google Cloud Platform (Vertex AI) |
 | Monitoring | PSI (Population Stability Index) |
@@ -231,6 +231,12 @@ insurance-mlops-pipeline/
 ├── tests/
 │   ├── test_features.py             # Feature engineering tests
 │   └── test_api.py                  # API endpoint tests
+├── terraform/
+│   ├── main.tf                      # GCS + Artifact Registry + Vertex AI + IAM
+│   ├── variables.tf                 # project_id, region, environment
+│   ├── outputs.tf                   # registry URL, bucket name, endpoint ID
+│   ├── versions.tf                  # provider ~> 5.0, optional GCS backend
+│   └── terraform.tfvars.example     # copy → terraform.tfvars (gitignored)
 ├── load_testing/
 │   └── locustfile.py                # Locust load test (validates HPA)
 ├── scripts/
@@ -374,7 +380,50 @@ Weekly automated retraining with promotion gate:
 
 **Default F1 threshold: `0.60`** — configurable at runtime via Airflow Variables (no redeploy needed).
 
-### 7. CI/CD
+### 7. Terraform — Infrastructure as Code
+
+Provisions all GCP resources needed to run the pipeline in production. A single `terraform apply` creates everything.
+
+**Resources (`terraform/`):**
+
+| Resource | Type | Purpose |
+|---|---|---|
+| `google_storage_bucket` | GCS | MLflow artifact storage + model binaries. Versioning on, lifecycle moves old versions to Nearline after 90 days |
+| `google_artifact_registry_repository` | Docker registry | Stores the fraud-detection-api Docker image |
+| `google_vertex_ai_endpoint` | Vertex AI | Serving endpoint — models are deployed here via `vertex_deploy.py` |
+| `google_service_account` | IAM | Pipeline SA with `storage.admin`, `artifactregistry.writer`, `aiplatform.user` |
+| `google_project_service` | API enablement | Enables Storage, Artifact Registry, Vertex AI, IAM APIs |
+
+**Workflow:**
+```bash
+cd terraform
+
+# 1. Copy and fill in your vars
+cp terraform.tfvars.example terraform.tfvars
+
+# 2. Authenticate
+gcloud auth application-default login
+
+# 3. Init + plan + apply
+terraform init
+terraform plan
+terraform apply
+
+# 4. Use the outputs
+terraform output artifact_registry_url   # → tag and push Docker image
+terraform output mlflow_artifact_root    # → set as MLFLOW_ARTIFACT_ROOT
+terraform output vertex_endpoint_id      # → pass to vertex_deploy.py
+terraform output docker_push_commands    # → copy-paste ready push commands
+```
+
+**Remote state (teams):** uncomment the `backend "gcs"` block in `versions.tf` and create a separate bucket for tfstate before `terraform init`.
+
+**Destroy:**
+```bash
+terraform destroy   # safe in dev; set mlflow_bucket_force_destroy=false in prod
+```
+
+### 8. CI/CD
 - GitHub Actions runs on every push to `main`
 - Trains model + runs all tests automatically
 
@@ -451,3 +500,7 @@ model performance.
 | hostPath PV over cloud PVC | Zero cloud deps for local Minikube demo |
 | HPA on CPU 70% threshold | Industry default; memory added as secondary guard |
 | Locust over k6/JMeter | Pure Python, easy to extend with custom fraud payloads |
+| Terraform over gcloud scripts | Declarative, idempotent, reviewable diffs, state tracking |
+| Single flat Terraform module | Simpler than nested modules for this scope; easy to read |
+| `force_destroy = false` in prod | Prevents accidental data loss on `terraform destroy` |
+| GCS backend (optional) | Enables team collaboration and remote state locking |
