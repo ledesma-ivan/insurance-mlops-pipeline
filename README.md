@@ -1,6 +1,6 @@
 # Insurance Fraud Detection - MLOps Pipeline
 
-End-to-end MLOps pipeline for insurance claim fraud detection. Built with **XGBoost**, **MLflow**, **FastAPI**, **Docker**.
+End-to-end MLOps pipeline for insurance claim fraud detection. Built with **XGBoost**, **MLflow**, **FastAPI**, **Airflow**, **Docker**, **Kubeflow**, and **Vertex AI**.
 
 ---
 
@@ -10,19 +10,24 @@ End-to-end MLOps pipeline for insurance claim fraud detection. Built with **XGBo
 Raw Data (3 CSVs)
         |
         v
-Feature Engineering --> Feature Store (Parquet)
+┌─────────────────────────────────────────────────────┐
+│              Airflow DAG (@weekly)                   │
+│                                                      │
+│  ingest_data → preprocess → train_model → evaluate  │
+│                                              |       │
+│                                     BranchPythonOp  │
+│                                       ↙         ↘   │
+│                               promote_model  reject  │
+└─────────────────────────────────────────────────────┘
         |
         v
-Training (XGBoost) --> MLflow Tracking + Model Registry
-        |
-        v
-Evaluation (Precision, Recall, F1, ROC-AUC)
+MLflow Tracking + Model Registry (Production stage)
         |
         v
 Serving (FastAPI REST API) --> Foundry / Consumers
         |
         v
-Monitoring (PSI Drift Detection) --> Automatic Retraining
+Monitoring (PSI Drift Detection) --> triggers DAG
 ```
 
 ---
@@ -30,17 +35,19 @@ Monitoring (PSI Drift Detection) --> Automatic Retraining
 ## Tech Stack
 
 | Component | Technology |
-| :--- | :--- |
-| **Model** | XGBoost |
-| **Experiment Tracking** | MLflow |
-| **Data & Feature Storage** | Parquet / PyArrow |
-| **Model Serving (API)** | FastAPI + Uvicorn + Pydantic |
-| **Containerization** | Docker |
-| **Local Orchestration** | Docker Compose |
-| **CI (Continuous Integration)** | GitHub Actions |
-| **Code Quality & Testing** | Pre-commit, Ruff / Black, Pytest |
-| **Model Monitoring** | PSI (Population Stability Index) Custom Scripts |
-| **Language** | Python 3.11 |
+|---|---|
+| Model | XGBoost |
+| Experiment Tracking | MLflow |
+| Feature Store | Parquet / PyArrow |
+| API | FastAPI |
+| Retraining Orchestration | Apache Airflow 2.10 |
+| Pipeline Orchestration | Kubeflow SDK + Vertex AI |
+| Containerization | Docker + Docker Compose |
+| Orchestration (Prod) | Kubernetes (GKE via Vertex AI) |
+| CI/CD | GitHub Actions |
+| Cloud | Google Cloud Platform (Vertex AI) |
+| Monitoring | PSI (Population Stability Index) |
+| Language | Python 3.11 |
 
 ---
 
@@ -79,24 +86,49 @@ python -m serving.app
 
 ```bash
 docker-compose up --build
-# API:    http://localhost:8000/docs
-# MLflow: http://localhost:5000
+# API:     http://localhost:8000/docs
+# MLflow:  http://localhost:5000
 ```
 
-### 5. Run tests
+### 5. Run Airflow (retraining pipeline)
+
+```bash
+# First time only — initialises DB and creates admin user
+docker-compose run --rm airflow-init
+
+# Start all services (MLflow + API + Airflow webserver + scheduler)
+docker-compose up --build
+
+# Airflow UI: http://localhost:8080
+# Login: admin / admin
+```
+
+**Trigger a manual DAG run:**
+```bash
+docker-compose exec airflow-scheduler \
+  airflow dags trigger insurance_fraud_retraining
+```
+
+**Change the F1 promotion threshold (default 0.60):**
+```bash
+docker-compose exec airflow-scheduler \
+  airflow variables set f1_threshold 0.65
+```
+
+### 6. Run tests
 
 ```bash
 pip install -r requirements/requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
-### 6. Run drift detection
+### 7. Run drift detection
 
 ```bash
 python -m monitoring.drift
 ```
 
-### 7. Run automatic retraining
+### 8. Run automatic retraining
 
 ```bash
 python -m monitoring.alerts
@@ -154,30 +186,33 @@ Content-Type: application/json
 
 ```
 insurance-mlops-pipeline/
+├── dags/
+│   └── insurance_retraining_dag.py  # Airflow DAG (retraining pipeline)
 ├── feature_store/
-│   ├── feature_engineering.py   # Feature creation + joins
-│   └── store.py                 # Feature Store (Parquet)
+│   ├── feature_engineering.py       # Feature creation + joins
+│   └── store.py                     # Feature Store (Parquet)
 ├── training/
-│   └── train.py                 # XGBoost + MLflow tracking + registry
+│   └── train.py                     # XGBoost + MLflow tracking + registry
 ├── monitoring/
-│   ├── drift.py                 # PSI drift detection
-│   └── alerts.py                # Alerts + automatic retraining
+│   ├── drift.py                     # PSI drift detection
+│   └── alerts.py                    # Alerts + automatic retraining
 ├── serving/
-│   ├── app.py                   # FastAPI REST endpoint
-│   └── vertex_deploy.py         # Vertex AI endpoint deployment
+│   ├── app.py                       # FastAPI REST endpoint
+│   └── vertex_deploy.py             # Vertex AI endpoint deployment
 ├── pipeline/
-│   └── pipeline.py              # Vertex AI Pipeline (Kubeflow SDK)
+│   └── pipeline.py                  # Vertex AI Pipeline (Kubeflow SDK)
 ├── tests/
-│   ├── test_features.py         # Feature engineering tests
-│   └── test_api.py              # API endpoint tests
+│   ├── test_features.py             # Feature engineering tests
+│   └── test_api.py                  # API endpoint tests
 ├── docker/
+│   ├── Dockerfile.airflow           # Airflow image + ML deps
 │   ├── Dockerfile.api
 │   └── Dockerfile.mlflow
 ├── k8s/
-│   └── deployment.yaml          # Kubernetes manifests
+│   └── deployment.yaml              # Kubernetes manifests
 ├── .github/workflows/
-│   └── ci.yml                   # CI/CD pipeline
-├── docker-compose.yml
+│   └── ci.yml                       # CI/CD pipeline
+├── docker-compose.yml               # MLflow + API + Airflow + Postgres
 ├── pyproject.toml
 └── requirements/
     ├── requirements.txt
@@ -215,11 +250,27 @@ Model Decay: automatic retraining triggered on drift.
 - Returns prediction + probability + risk level
 - Containerized with Docker
 
-### 5. CI/CD
+### 5. Airflow Retraining DAG
+
+Weekly automated retraining with promotion gate:
+
+| Task | Operator | Description |
+|---|---|---|
+| `ingest_data` | PythonOperator | Validates 3 source CSVs, pushes stats to XCom |
+| `preprocess` | PythonOperator | Runs feature engineering, saves Parquet to `/tmp` |
+| `train_model` | PythonOperator | Trains XGBoost, logs run to MLflow, pushes `run_id` |
+| `evaluate` | PythonOperator | Reads F1 from MLflow run via `run_id` |
+| `check_f1_threshold` | BranchPythonOperator | Compares F1 vs `f1_threshold` Airflow Variable |
+| `promote_model` | PythonOperator | Transitions model version → **Production** in MLflow Registry |
+| `reject_model` | PythonOperator | Tags run as rejected, Production model unchanged |
+
+**Default F1 threshold: `0.60`** — configurable at runtime via Airflow Variables (no redeploy needed).
+
+### 6. CI/CD
 - GitHub Actions runs on every push to `main`
 - Trains model + runs all tests automatically
 
-### 6. Vertex AI (Production)
+### 7. Vertex AI (Production)
 - Pipeline compiled with Kubeflow SDK
 - Deployable to Vertex AI Endpoints
 - Feature Store integration ready
@@ -280,3 +331,6 @@ model performance.
 | FastAPI over Flask | Async, auto-docs, Pydantic validation |
 | PSI for drift detection | Industry standard, interpretable thresholds |
 | Separate containers | Independent scaling, fault isolation |
+| Airflow LocalExecutor over Celery | Single-node dev setup, no Redis overhead |
+| F1 threshold via Airflow Variable | Configurable at runtime without redeploy |
+| BranchPythonOperator for promote/reject | Native Airflow pattern, visible in DAG graph |

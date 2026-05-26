@@ -1,0 +1,16 @@
+FROM apache/airflow:2.10.0-python3.11
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential libgomp1 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+USER airflow
+RUN pip install --no-cache-dir \
+    xgboost==2.0.3 \
+    scikit-learn==1.4.2 \
+    mlflow==2.13.0 \
+    pandas==2.2.2 \
+    numpy==1.26.4 \
+    pyarrow==16.0.0
