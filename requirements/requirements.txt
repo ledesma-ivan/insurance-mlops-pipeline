@@ -9,3 +9,10 @@ uvicorn
 pytest
 kfp
 google-cloud-aiplatform
+# RAG explainability
+langchain>=0.3.0
+langchain-anthropic>=0.3.0
+langchain-community>=0.3.0
+faiss-cpu>=1.8.0
+sentence-transformers>=3.0.0
+anthropic>=0.40.0

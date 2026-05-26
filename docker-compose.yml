@@ -45,6 +45,9 @@ services:
       - ./models:/app/models
     environment:
       - MODEL_PATH=/app/models/latest/model.json
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - PROJECT_ROOT=/app
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       - mlflow
 

@@ -1,6 +1,6 @@
 # Insurance Fraud Detection - MLOps Pipeline
 
-End-to-end MLOps pipeline for insurance claim fraud detection. Built with **XGBoost**, **MLflow**, **FastAPI**, **Airflow**, **Docker**, **Kubeflow**, and **Vertex AI**.
+End-to-end MLOps pipeline for insurance claim fraud detection. Built with **XGBoost**, **MLflow**, **FastAPI**, **Airflow**, **LangChain + FAISS**, **Docker**, **Kubeflow**, and **Vertex AI**.
 
 ---
 
@@ -41,6 +41,7 @@ Monitoring (PSI Drift Detection) --> triggers DAG
 | Feature Store | Parquet / PyArrow |
 | API | FastAPI |
 | Retraining Orchestration | Apache Airflow 2.10 |
+| Explainability (GenAI) | LangChain + FAISS + Claude Haiku |
 | Pipeline Orchestration | Kubeflow SDK + Vertex AI |
 | Containerization | Docker + Docker Compose |
 | Orchestration (Prod) | Kubernetes (GKE via Vertex AI) |
@@ -180,12 +181,36 @@ Content-Type: application/json
 }
 ```
 
+### Explain (RAG — GenAI)
+
+```bash
+POST http://localhost:8000/explain
+Content-Type: application/json
+```
+
+Same request body as `/predict`. Returns prediction + natural language explanation.
+
+```json
+{
+  "prediction": 1,
+  "probability": 0.8731,
+  "risk_level": "HIGH",
+  "explanation": "Esta claim fue marcada como HIGH RISK por tres factores principales: (1) El ratio claim/prima es de 347x — muy por encima del umbral sospechoso de 10x, lo que indica que el asegurado reclama un monto desproporcionado a su prima. (2) El incidente ocurrió a las 3am sin reporte policial, una combinación clásica de fraude nocturno sin testigos. (3) Se reclama una pérdida mayor (Major Loss) sin lesiones reportadas, lo cual es físicamente inconsistente con un incidente grave."
+}
+```
+
+> **Sin API key:** el endpoint devuelve una explicación basada en reglas automáticamente.
+
 ---
 
 ## Project Structure
 
 ```
 insurance-mlops-pipeline/
+├── explainability/
+│   ├── domain_docs.py               # Feature descriptions + fraud pattern docs
+│   ├── knowledge_base.py            # Builds/loads FAISS index from MLflow + docs
+│   └── rag_explainer.py             # LangChain LCEL chain (Claude Haiku)
 ├── dags/
 │   └── insurance_retraining_dag.py  # Airflow DAG (retraining pipeline)
 ├── feature_store/
@@ -250,7 +275,37 @@ Model Decay: automatic retraining triggered on drift.
 - Returns prediction + probability + risk level
 - Containerized with Docker
 
-### 5. Airflow Retraining DAG
+### 5. RAG Explainability Layer (GenAI)
+
+`POST /explain` answers **"¿por qué se marcó esta claim?"** using a RAG pipeline:
+
+```
+Claim features
+      │
+      ▼
+FAISS retriever ──────────────────────────────────────────────────┐
+  ├─ domain_docs.py: feature descriptions + fraud patterns         │
+  └─ MLflow importances: feature weights from Production model     │
+                                                                   ▼
+                                               LangChain LCEL chain
+                                               (Claude Haiku)
+                                                   │
+                                                   ▼
+                                       Natural language explanation
+```
+
+**Knowledge base sources (indexed at startup):**
+- Static domain docs: 12 documents describing each feature and fraud pattern context
+- Dynamic MLflow importances: feature weights extracted from the registered Production model
+
+**Without `ANTHROPIC_API_KEY`:** falls back to a rule-based explanation (no LLM required).
+
+**Rebuild the FAISS index manually:**
+```bash
+python -m explainability.knowledge_base http://localhost:5000
+```
+
+### 6. Airflow Retraining DAG
 
 Weekly automated retraining with promotion gate:
 
@@ -331,6 +386,11 @@ model performance.
 | FastAPI over Flask | Async, auto-docs, Pydantic validation |
 | PSI for drift detection | Industry standard, interpretable thresholds |
 | Separate containers | Independent scaling, fault isolation |
+| LangChain LCEL over legacy chains | Composable, type-safe, easier to extend |
+| FAISS over Chroma/Pinecone | Zero infra, runs in-process, sufficient for this KB size |
+| sentence-transformers for embeddings | Free, no API key, good quality for Spanish/English |
+| Claude Haiku as explainability LLM | Fast, cheap, sufficient for structured explanation tasks |
+| Fallback to rule-based explanation | Makes `/explain` usable without API key in demos |
 | Airflow LocalExecutor over Celery | Single-node dev setup, no Redis overhead |
 | F1 threshold via Airflow Variable | Configurable at runtime without redeploy |
 | BranchPythonOperator for promote/reject | Native Airflow pattern, visible in DAG graph |
