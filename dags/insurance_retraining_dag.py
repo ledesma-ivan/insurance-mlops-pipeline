@@ -8,6 +8,7 @@ Flow:
 """
 
 import os
+import sys
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -18,6 +19,28 @@ PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/opt/airflow/project")
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
 MODEL_NAME = "insurance-fraud-model"
 F1_THRESHOLD_DEFAULT = "0.60"
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# ML deps — try/except because the Airflow scheduler parses this file without
+# the full ML environment; workers have it via Dockerfile.airflow.
+try:
+    import mlflow
+    import mlflow.xgboost
+    import pandas as pd
+    import xgboost as xgb
+    from mlflow.tracking import MlflowClient
+    from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+    from sklearn.model_selection import train_test_split
+
+    from feature_store.feature_engineering import (
+        create_features,
+        load_raw_data,
+        select_model_features,
+    )
+except ImportError:
+    pass
 
 default_args = {
     "owner": "mlops",
@@ -30,13 +53,11 @@ default_args = {
 # ── Task 1: Ingest ────────────────────────────────────────────────────────────
 
 def ingest_data(**context):
-    import pandas as pd
-
     data_dir = os.path.join(PROJECT_ROOT, "data", "raw")
     files = {
         "insurance": os.path.join(data_dir, "insurance_data.csv"),
-        "employee": os.path.join(data_dir, "employee_data.csv"),
-        "vendor": os.path.join(data_dir, "vendor_data.csv"),
+        "employee":  os.path.join(data_dir, "employee_data.csv"),
+        "vendor":    os.path.join(data_dir, "vendor_data.csv"),
     }
 
     stats = {}
@@ -49,23 +70,14 @@ def ingest_data(**context):
 
     context["ti"].xcom_push(key="data_stats", value=stats)
     context["ti"].xcom_push(key="data_dir", value=data_dir)
-    total_rows = sum(v["rows"] for v in stats.values())
-    print(f"Ingest complete: {total_rows} total rows across {len(files)} files")
+    print(f"Ingest complete: {sum(v['rows'] for v in stats.values())} total rows")
 
 
 # ── Task 2: Preprocess ────────────────────────────────────────────────────────
 
 def preprocess(**context):
-    import sys
-    sys.path.insert(0, PROJECT_ROOT)
-
-    from feature_store.feature_engineering import (
-        create_features,
-        load_raw_data,
-        select_model_features,
-    )
-
     data_dir = context["ti"].xcom_pull(key="data_dir", task_ids="ingest_data")
+
     df = load_raw_data(
         insurance_path=os.path.join(data_dir, "insurance_data.csv"),
         employee_path=os.path.join(data_dir, "employee_data.csv"),
@@ -84,18 +96,6 @@ def preprocess(**context):
 # ── Task 3: Train ─────────────────────────────────────────────────────────────
 
 def train_model(**context):
-    import sys
-    sys.path.insert(0, PROJECT_ROOT)
-
-    import mlflow
-    import mlflow.xgboost
-    import pandas as pd
-    import xgboost as xgb
-    from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
-    from sklearn.model_selection import train_test_split
-
-    from feature_store.feature_engineering import select_model_features
-
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
     features_path = context["ti"].xcom_pull(key="features_path", task_ids="preprocess")
@@ -132,9 +132,9 @@ def train_model(**context):
         y_pred = model.predict(X_test)
         metrics = {
             "precision": float(precision_score(y_test, y_pred, zero_division=0)),
-            "recall": float(recall_score(y_test, y_pred, zero_division=0)),
-            "f1": float(f1_score(y_test, y_pred, zero_division=0)),
-            "roc_auc": float(roc_auc_score(y_test, y_pred)),
+            "recall":    float(recall_score(y_test, y_pred, zero_division=0)),
+            "f1":        float(f1_score(y_test, y_pred, zero_division=0)),
+            "roc_auc":   float(roc_auc_score(y_test, y_pred)),
         }
         mlflow.log_metrics(metrics)
         mlflow.xgboost.log_model(model, artifact_path="model")
@@ -147,23 +147,17 @@ def train_model(**context):
 # ── Task 4: Evaluate ──────────────────────────────────────────────────────────
 
 def evaluate(**context):
-    import mlflow
-
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
     run_id = context["ti"].xcom_pull(key="run_id", task_ids="train_model")
-    run = mlflow.get_run(run_id)
-    m = run.data.metrics
+    m = mlflow.get_run(run_id).data.metrics
 
     f1 = m.get("f1", 0.0)
     context["ti"].xcom_push(key="f1_score", value=f1)
 
     print(
-        f"Evaluation results | "
-        f"F1={f1:.4f} | "
-        f"Precision={m.get('precision', 0):.4f} | "
-        f"Recall={m.get('recall', 0):.4f} | "
-        f"ROC-AUC={m.get('roc_auc', 0):.4f}"
+        f"Evaluation | F1={f1:.4f} | Precision={m.get('precision', 0):.4f} | "
+        f"Recall={m.get('recall', 0):.4f} | ROC-AUC={m.get('roc_auc', 0):.4f}"
     )
 
 
@@ -174,20 +168,12 @@ def check_f1_threshold(**context):
     f1 = float(context["ti"].xcom_pull(key="f1_score", task_ids="evaluate"))
 
     print(f"F1={f1:.4f} | threshold={threshold:.4f}")
-
-    if f1 >= threshold:
-        print(f"Decision: PROMOTE (F1 {f1:.4f} >= {threshold:.4f})")
-        return "promote_model"
-    print(f"Decision: REJECT (F1 {f1:.4f} < {threshold:.4f})")
-    return "reject_model"
+    return "promote_model" if f1 >= threshold else "reject_model"
 
 
 # ── Task 6a: Promote ──────────────────────────────────────────────────────────
 
 def promote_model(**context):
-    import mlflow
-    from mlflow.tracking import MlflowClient
-
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     client = MlflowClient()
 
@@ -213,9 +199,6 @@ def promote_model(**context):
 # ── Task 6b: Reject ───────────────────────────────────────────────────────────
 
 def reject_model(**context):
-    import mlflow
-    from mlflow.tracking import MlflowClient
-
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     client = MlflowClient()
 
@@ -226,10 +209,7 @@ def reject_model(**context):
     client.set_tag(run_id, "promotion_status", "rejected")
     client.set_tag(run_id, "rejection_reason", f"F1={f1:.4f} below threshold={threshold:.4f}")
 
-    print(
-        f"Model rejected: F1={f1:.4f} < threshold={threshold:.4f}. "
-        "Current Production model is unchanged."
-    )
+    print(f"Rejected: F1={f1:.4f} < {threshold:.4f}. Production model unchanged.")
 
 
 # ── DAG definition ────────────────────────────────────────────────────────────
@@ -244,12 +224,12 @@ with DAG(
     tags=["mlops", "insurance", "retraining"],
 ) as dag:
 
-    t_ingest = PythonOperator(task_id="ingest_data", python_callable=ingest_data)
-    t_preprocess = PythonOperator(task_id="preprocess", python_callable=preprocess)
-    t_train = PythonOperator(task_id="train_model", python_callable=train_model)
-    t_evaluate = PythonOperator(task_id="evaluate", python_callable=evaluate)
-    t_branch = BranchPythonOperator(task_id="check_f1_threshold", python_callable=check_f1_threshold)
-    t_promote = PythonOperator(task_id="promote_model", python_callable=promote_model)
-    t_reject = PythonOperator(task_id="reject_model", python_callable=reject_model)
+    t_ingest    = PythonOperator(task_id="ingest_data",         python_callable=ingest_data)
+    t_preprocess = PythonOperator(task_id="preprocess",         python_callable=preprocess)
+    t_train     = PythonOperator(task_id="train_model",         python_callable=train_model)
+    t_evaluate  = PythonOperator(task_id="evaluate",            python_callable=evaluate)
+    t_branch    = BranchPythonOperator(task_id="check_f1_threshold", python_callable=check_f1_threshold)
+    t_promote   = PythonOperator(task_id="promote_model",       python_callable=promote_model)
+    t_reject    = PythonOperator(task_id="reject_model",        python_callable=reject_model)
 
     t_ingest >> t_preprocess >> t_train >> t_evaluate >> t_branch >> [t_promote, t_reject]

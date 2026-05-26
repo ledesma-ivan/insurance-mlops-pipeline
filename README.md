@@ -2,6 +2,9 @@
 
 End-to-end MLOps pipeline for insurance claim fraud detection. Built with **XGBoost**, **MLflow**, **FastAPI**, **Airflow**, **LangChain + FAISS**, **Kubernetes (Minikube)**, **Docker**, **Kubeflow**, and **Vertex AI**.
 
+> **Model metrics:** F1 = 0.02 · ROC-AUC = 0.49 · Dataset: 10 000 claims, 5% fraud rate.
+> The dataset has near-random labels (max feature correlation with target: 0.03) — the focus of this repo is **MLOps infrastructure**, not model performance. See [Model Performance Note](#model-performance-note).
+
 ---
 
 ## Architecture

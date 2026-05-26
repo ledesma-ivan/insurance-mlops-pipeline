@@ -5,6 +5,7 @@ mlruns/
 mlartifacts/
 models/
 monitoring/alerts_log.json
+mlflow.db
 .pytest_cache/
 *.egg-info/
 
